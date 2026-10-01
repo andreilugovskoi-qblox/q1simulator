@@ -173,7 +173,7 @@ class Q1Sequencer(InstrumentChannel, Task):
         self.rt_renderer.set_ph((degrees / 360) % 1 * 1e9)
 
     def _gain_awg(self, gain, path):
-        value = int(gain*32767)
+        value = gain*32767
         self.rt_renderer.gain_awg_path(value, path)
 
     def _offset_awg(self, offset, path):

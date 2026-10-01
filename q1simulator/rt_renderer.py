@@ -27,7 +27,7 @@ class Settings:
     awg_offs_qcodes: np.ndarray = field(default_factory=lambda: np.zeros(2, np.int16))
     awg_offs: np.ndarray = field(default_factory=lambda: np.zeros(2, np.int16))
     awg_gain: np.ndarray = field(default_factory=lambda: np.full(2, 32767, np.int16))
-    awg_gain_qcodes: np.ndarray = field(default_factory=lambda: np.full(2, 32767, np.int16))
+    awg_gain_qcodes: np.ndarray = field(default_factory=lambda: np.full(2, 1.0, np.int16))
     reset_phase: bool = False
     relative_phase: float | None = None
     phase_shift: float = 0
@@ -288,14 +288,14 @@ class Renderer:
 
     def set_awg_gain(self, gain0, gain1):
         self.next_settings.awg_gain[:] = (
-            self.next_settings.awg_gain_qcodes[0] * gain0,
-            self.next_settings.awg_gain_qcodes[0] * gain1
+            gain0,
+            gain1
         )
 
     def set_awg_offs(self, offset0, offset1):
         self.next_settings.awg_offs[:] = (
-            self.next_settings.awg_offs_qcodes[0] + offset0,
-            self.next_settings.awg_offs_qcodes[1] + offset1
+            offset0,
+            offset1
         )
 
     @check_conditional(clear_latched_settings=True)
@@ -561,6 +561,7 @@ class Renderer:
                     marker_out += [[t_max, m_old], [t_max, 0]]
 
     def _render(self, time):
+        print(self.settings)
         if time < 4:
             logger.error(f'{self.name}: wait_time ({time} ns) must be >= 4 ns')
             self._error('WAIT TIME < 4 ns')
@@ -586,16 +587,18 @@ class Renderer:
         s = self.settings
 
         path = np.zeros((2, t_render), dtype=np.int16)
-        path[0] = s.awg_offs[0]
-        path[1] = s.awg_offs[1]
+        path[0] = s.awg_offs_qcodes[0] + s.awg_offs[0]
+        path[1] = s.awg_offs_qcodes[1] + s.awg_offs[1]
 
         # TODO only render if path active!
 
         for i in range(2):
+            combined_gain = s.awg_gain[i] * s.awg_gain_qcodes[i]
+            print(s.awg_gain[i],s.awg_gain_qcodes[i], combined_gain)
             if self.waves_end[i] > t_start:
                 end = min(self.waves_end[i], t_end)
                 data = self.waves[i][t_start-self.wave_start:end-self.wave_start]
-                path[i][0:len(data)] += (s.awg_gain[i] * data) >> 15
+                path[i][0:len(data)] += (combined_gain * data) >> 15
 
         if self.mod_en_awg:
             t = np.arange(t_start, t_end)
