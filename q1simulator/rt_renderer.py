@@ -24,11 +24,14 @@ MockDataEntry = float | complex | Sequence[float]
 @dataclass
 class Settings:
     marker: int = 0
+    awg_offs_qcodes: np.ndarray = field(default_factory=lambda: np.zeros(2, np.int16))
     awg_offs: np.ndarray = field(default_factory=lambda: np.zeros(2, np.int16))
     awg_gain: np.ndarray = field(default_factory=lambda: np.full(2, 32767, np.int16))
+    awg_gain_qcodes: np.ndarray = field(default_factory=lambda: np.full(2, 32767, np.int16))
     reset_phase: bool = False
     relative_phase: float | None = None
     phase_shift: float = 0
+    phase_offs_qcodes: float = 0
     frequency: float | None = None
 
 
@@ -199,10 +202,10 @@ class Renderer:
         self.t_sync = 0
 
     def gain_awg_path(self, gain, path):
-        self.next_settings.awg_gain[path] = gain
+        self.next_settings.awg_gain_qcodes[path] = gain
 
     def offset_awg_path(self, offset, path):
-        self.next_settings.awg_offs[path] = offset
+        self.next_settings.awg_offs_qcodes[path] = offset
 
     def enable_paths(self, enabled_paths):
         self.enabled_paths = enabled_paths
@@ -279,16 +282,27 @@ class Renderer:
         self.next_settings.reset_phase = True
 
     def set_ph(self, phase):
-        self.next_settings.relative_phase = _phase2float(phase)
+        self.next_settings.relative_phase = self.next_settings.phase_offs_qcodes + _phase2float(phase)
+    
+    def nco_phase_offs(self, phase):
+        self.next_settings.phase_offs_qcodes = _phase2float(phase)
+        if self.next_settings.relative_phase is None:
+            self.next_settings.relative_phase = 0
 
     def set_ph_delta(self, phase_delta):
         self.next_settings.phase_shift = _phase2float(phase_delta)
 
     def set_awg_gain(self, gain0, gain1):
-        self.next_settings.awg_gain[:] = gain0, gain1
+        self.next_settings.awg_gain[:] = (
+            self.next_settings.awg_gain_qcodes[0] * gain0,
+            self.next_settings.awg_gain_qcodes[0] * gain1
+        )
 
     def set_awg_offs(self, offset0, offset1):
-        self.next_settings.awg_offs[:] = offset0, offset1
+        self.next_settings.awg_offs[:] = (
+            self.next_settings.awg_offs_qcodes[0] + offset0, 
+            self.next_settings.awg_offs_qcodes[1] + offset1
+        )
 
     @check_conditional(clear_latched_settings=True)
     def upd_param(self, wait_after):
@@ -508,6 +522,7 @@ class Renderer:
 
         if new.reset_phase:
             self.nco_phase_offset = (-self.time * self.nco_frequency * 1e-9) % 1
+            new.phase_offs_qcodes = 0.0
             new.reset_phase = False
             # reset also resets the 2 other phase registers.
             self.relative_phase = 0.0
